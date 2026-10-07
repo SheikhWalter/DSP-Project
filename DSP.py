@@ -172,12 +172,12 @@ def read_signal():
         content = file.read()
         content = content.split("\n")
         #N_SAMPLES = content[2]
-        new_sig = {float(n): float(x) for n,x in [s.split(" ") for s in content[3:]]}
+        new_sig = Signal(0, {float(n): float(x) for n,x in [s.split(" ") for s in content[3:]]})
     
     name = sig_name()
     register_signal(new_sig, name)
 
-def register_signal(signal: dict, name: str):
+def register_signal(signal: Signal, name: str):
     if name in SIGNALS.keys():
         return
     SIGNALS[name] = signal
@@ -191,7 +191,7 @@ def register_signal(signal: dict, name: str):
     log(f"Added {name} successfully", "ok")
 
 def export_signal(sender, _, name):
-    signal = ["0", "0", f"{len(SIGNALS[name])}"] + [f"{int(n)} {int(x)}" for n,x in SIGNALS[name].items()]
+    signal = ["0", "0", f"{len(SIGNALS[name].sig)}"] + [f"{int(n)} {int(x)}" for n,x in SIGNALS[name].sig.items()]
     output = "\n".join(signal)
     with open(f"{name}.txt", "w", encoding="utf-8") as file:
         file.write(output)
@@ -220,9 +220,12 @@ def drop_on_window(sender, app_data):
 def drop_on_plot(sender, app_data):
     if dpg.does_item_exist(app_data):
         return
-    sig = SIGNALS[app_data]
+    sig = SIGNALS[app_data].sig
     xs, ys = list(sig.keys()), list(sig.values())
-    dpg.add_stem_series(xs, ys, label=app_data, parent="y_axis", tag=app_data)
+    if SIGNALS[app_data].type:
+        dpg.add_line_series(xs, ys, label=app_data, parent="y_axis", tag=app_data)
+    else:
+        dpg.add_stem_series(xs, ys, label=app_data, parent="y_axis", tag=app_data)
     dpg.add_button(label=f"Delete {app_data}", parent=dpg.last_item(), callback=lambda: dpg.delete_item(app_data))
 
 def on_resize():
@@ -232,12 +235,12 @@ def on_resize():
 
 def add_signals():
     names = get_values("added-sigs")
-    sum_signal = t1.add_signals(tuple(SIGNALS[n] for n in names))
+    sum_signal = Signal(0, t1.add_signals(tuple(SIGNALS[n].sig for n in names)))
     register_signal(sum_signal, "+".join(names))
 
 def subtract_signals():
     names = get_values("subtracted-sigs")
-    sub_signal = t1.subtract_signals(tuple(SIGNALS[n] for n in names))
+    sub_signal = Signal(0, t1.subtract_signals(tuple(SIGNALS[n].sig for n in names)))
     register_signal(sub_signal, "-".join(names))
 
 def amplify_signal():
@@ -252,20 +255,41 @@ def shift_signal():
     name = get_values("shifted-sig")
     if not name: return
     name = name[0]
-    k = float(dpg.get_value("shift_val"))
-    shift_sig = t1.shift_signal(SIGNALS[name], k)
+    k = dpg.get_value("shift_val")
+    shift_sig = Signal(0, t1.shift_signal(SIGNALS[name].sig, k))
     register_signal(shift_sig, f"{name}\\({k})")
 
 def reverse_signal():
     name = get_values("reversed-sig")
     if not name: return
     name = name[0]
-    rev_sig = t1.reverse_signal(SIGNALS[name])
+    rev_sig = Signal(0, t1.reverse_signal(SIGNALS[name].sig))
     register_signal(rev_sig, f"~{name}")
 
 #TODO Task 2:
 
+def generate_signal():
+    func_name = dpg.get_value("sig_func")
+    if func_name == "sin":
+        func = math.sin
+    elif func_name == "cos":
+        func = math.cos
 
+    sig_desc = {
+        "func": func,
+        "A": dpg.get_value("A"),
+        "theta": dpg.get_value("theta"),
+        "f": dpg.get_value("f"),
+        "fs": dpg.get_value("fs"),
+        "s_range": range(dpg.get_value("s_range")[0], dpg.get_value("s_range")[1])
+    }
+    gen_sig = Signal(1, sig_desc)
+
+    sig_type = dpg.get_value("sig_type")
+    if sig_type == "Discrete":
+        gen_sig.type = 0
+    
+    register_signal(gen_sig, f"{sig_desc['A']}*{func_name}({2*sig_desc["f"]/sig_desc["fs"]:.2f}πn + {sig_desc["theta"]})[{sig_type[0]}]")
 
 #TODO Task 3
 
