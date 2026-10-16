@@ -292,6 +292,86 @@ def generate_signal():
     register_signal(gen_sig, f"{sig_desc['A']}*{func_name}({2*sig_desc["f"]/sig_desc["fs"]:.2f}πn + {sig_desc["theta"]})[{sig_type[0]}]")
 
 #TODO Task 3
+def quantize_signal(signal_dict, levels=None, bits=None):
+    # Calculate Levels or Bits based on user input
+    if bits is not None and bits > 0:
+        levels = 2 ** bits
+    elif levels is not None and levels > 0:
+        bits = int(math.ceil(math.log2(levels)))
+    else:
+        raise ValueError("Either valid bits or levels must be provided.")
+
+    x_vals = list(signal_dict.values())
+    x_min = min(x_vals)
+    x_max = max(x_vals)
+
+    # Step size Delta
+    delta = (x_max - x_min) / levels
+
+    quantized_sig = {}
+    error_sig = {}
+    encoded_sig = {}
+    level_indices = {}
+
+    for n, x in signal_dict.items():
+        # Determine 1-based level index (k)
+        if x == x_max:
+            k = levels
+        else:
+            k = int((x - x_min) // delta) + 1
+            if k > levels:
+                k = levels
+
+        # Midpoint reconstruction level
+        q_k = x_min + (k - 0.5) * delta
+        
+        # Calculate quantization error and binary encoding
+        err = q_k - x
+        encoded_str = format(k - 1, f'0{bits}b')
+
+        quantized_sig[n] = q_k
+        error_sig[n] = err
+        encoded_sig[n] = encoded_str
+        level_indices[n] = k
+
+    return quantized_sig, error_sig, encoded_sig, level_indices, delta
+
+# Task 3 GUI
+
+def quantize_signal_gui():
+    names = get_values("quantized-sig")
+    if not names:
+        log("Please drag and drop a signal to quantize.", "error")
+        return
+    
+    name = names[0]
+    mode = dpg.get_value("quant_mode")  # "Bits" or "Levels"
+    val = dpg.get_value("quant_val")
+    
+    if val <= 0:
+        log("Value for Bits/Levels must be greater than 0.", "error")
+        return
+
+    sig_dict = SIGNALS[name].sig
+    
+    if mode == "Bits":
+        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(sig_dict, bits=int(val))
+    else:
+        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(sig_dict, levels=int(val))
+
+    # Register Quantized and Error signals for plotting
+    quantized_signal_obj = Signal(0, q_sig)
+    error_signal_obj = Signal(0, err_sig)
+    
+    register_signal(quantized_signal_obj, f"{name}_Quantized")
+    register_signal(error_signal_obj, f"{name}_Error")
+
+    # Output details and encoded samples to console log
+    log(f"--- Quantization Output: {name} ---", "info")
+    log(f"Step size (Delta): {delta:.4f}", "info")
+    for n in sig_dict.keys():
+        log(f"n={int(n)} | Orig={sig_dict[n]:.3f} | Quant={q_sig[n]:.3f} | Level={lvl_idx[n]} | Code={enc_sig[n]} | Error={err_sig[n]:.3f}", "ok")
+# end Task 3
 
 
 
@@ -424,8 +504,30 @@ with dpg.window(tag="Primary Window"):
                         dpg.add_button(label="Generate signal", width=-1, height=45, callback=generate_signal)
 
                     # Task 3
+
                     with dpg.group(tag="Task 3", show=False):
-                        dpg.add_text("Under construction :)")
+                        dpg.add_text("Quantization Parameters:")
+                        with dpg.child_window(width=-1, height=220):
+                            dpg.add_text("Drag signal to quantize:")
+                            dpg.add_child_window(
+                                height=60, 
+                                drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
+                                payload_type="signal", 
+                                tag="quantized-sig"
+                            )
+                            dpg.add_spacer(height=5)
+                            dpg.add_text("Quantize input mode:")
+                            dpg.add_radio_button(
+                                items=["Bits", "Levels"],
+                                default_value="Bits",
+                                horizontal=True,
+                                tag="quant_mode"
+                            )
+                            dpg.add_spacer(height=5)
+                            dpg.add_input_int(tag="quant_val", label="Number of Bits / Levels", default_value=3, min_value=1, width=110)
+                        
+                        dpg.add_button(label="Quantize Signal", width=-1, height=45, callback=quantize_signal_gui)
+                    # Task 3 end
 
                 with dpg.child_window(height=550):
                     with dpg.plot(
@@ -472,11 +574,14 @@ dpg.setup_dearpygui()
 dpg.show_viewport()
 dpg.set_primary_window("Primary Window", True)
 on_resize()
-while dpg.is_dearpygui_running():
-    now = time.time()
-    if now - last >= FRAME_DELAY:
-        current_frame = (current_frame + 1) % frame_count
-        dpg.set_value("spinning_cat", frames[current_frame][2])
-        last = now
-    dpg.render_dearpygui_frame()
-dpg.destroy_context()
+
+# wrap GUI to run tests cases
+if __name__ == "__main__":
+    while dpg.is_dearpygui_running():
+        now = time.time()
+        if now - last >= FRAME_DELAY:
+            current_frame = (current_frame + 1) % frame_count
+            dpg.set_value("spinning_cat", frames[current_frame][2])
+            last = now
+        dpg.render_dearpygui_frame()
+    dpg.destroy_context()
