@@ -150,7 +150,17 @@ def sig_name():
     return f"Sig_{SIG_NUM}"
 
 def clear_signals():
+    global ANNOTATIONS
+
+    # Delete plot series from y_axis
     dpg.delete_item("y_axis", children_only=True)
+
+    # Delete all annotation overlays
+    for ann in ANNOTATIONS:
+        if dpg.does_item_exist(ann):
+            dpg.delete_item(ann)
+
+    ANNOTATIONS.clear()
 
 def delete_signal(sender, _, name):
     for id, item in get_id_labels("signals_list"):
@@ -343,34 +353,60 @@ def quantize_signal_gui():
     if not names:
         log("Please drag and drop a signal to quantize.", "error")
         return
-    
+
     name = names[0]
     mode = dpg.get_value("quant_mode")  # "Bits" or "Levels"
     val = dpg.get_value("quant_val")
-    
+
     if val <= 0:
         log("Value for Bits/Levels must be greater than 0.", "error")
         return
 
     sig_dict = SIGNALS[name].sig
-    
-    if mode == "Bits":
-        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(sig_dict, bits=int(val))
-    else:
-        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(sig_dict, levels=int(val))
 
-    # Register Quantized and Error signals for plotting
+    # Run quantization
+    if mode == "Bits":
+        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(
+            sig_dict, bits=int(val)
+        )
+    else:
+        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(
+            sig_dict, levels=int(val)
+        )
+
+    # 1. Register Quantized and Error signals
     quantized_signal_obj = Signal(0, q_sig)
     error_signal_obj = Signal(0, err_sig)
-    
-    register_signal(quantized_signal_obj, f"{name}_Quantized")
-    register_signal(error_signal_obj, f"{name}_Error")
 
-    # Output details and encoded samples to console log
+    quantized_name = f"{name}_Quantized"
+    error_name = f"{name}_Error"
+
+    register_signal(quantized_signal_obj, quantized_name)
+    register_signal(error_signal_obj, error_name)
+
+    # 2. Display quantized signal on plot
+    drop_on_plot(sender=None, app_data=quantized_name)
+
+    # 3. Add binary code annotations (Attached to main_plot)
+    for n, q_val in q_sig.items():
+        binary_code = enc_sig[n]
+        ann_id = dpg.add_plot_annotation(
+            label=binary_code,
+            default_value=(n, q_val),
+            offset=(0, -15),
+            color=[0, 255, 255, 255],
+            parent="main_plot",
+        )
+        ANNOTATIONS.append(ann_id)
+
+    # Output details to log
     log(f"--- Quantization Output: {name} ---", "info")
     log(f"Step size (Delta): {delta:.4f}", "info")
     for n in sig_dict.keys():
-        log(f"n={int(n)} | Orig={sig_dict[n]:.3f} | Quant={q_sig[n]:.3f} | Level={lvl_idx[n]} | Code={enc_sig[n]} | Error={err_sig[n]:.3f}", "ok")
+        log(
+            f"n={int(n)} | Orig={sig_dict[n]:.3f} | Quant={q_sig[n]:.3f} | Level={lvl_idx[n]} | Code={enc_sig[n]} | Error={err_sig[n]:.3f}",
+            "ok",
+        )
 # end Task 3
 
 
@@ -535,7 +571,8 @@ with dpg.window(tag="Primary Window"):
                         width=-1, height=-1,
                         equal_aspects=True,
                         drop_callback=drop_on_plot, 
-                        payload_type="signal"
+                        payload_type="signal",
+                        tag="main_plot",
                     ):
                         dpg.add_plot_legend()
                         dpg.add_plot_axis(dpg.mvXAxis, label="n", tag="x_axis")
