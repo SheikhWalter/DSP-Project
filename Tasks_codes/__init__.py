@@ -20,6 +20,7 @@ class Signal():
 
 TASKS = ["Task 1", "Task 2", "Task 3"]
 N_SAMPLES = None
+ANNOTATIONS = []
 SIGNALS: dict[str, Signal] = {}
 SIG_NUM = 0
 MAX_LINES = 200
