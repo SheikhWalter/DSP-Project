@@ -150,17 +150,8 @@ def sig_name():
     return f"Sig_{SIG_NUM}"
 
 def clear_signals():
-    global ANNOTATIONS
-
     # Delete plot series from y_axis
     dpg.delete_item("y_axis", children_only=True)
-
-    # Delete all annotation overlays
-    for ann in ANNOTATIONS:
-        if dpg.does_item_exist(ann):
-            dpg.delete_item(ann)
-
-    ANNOTATIONS.clear()
 
 def delete_signal(sender, _, name):
     for id, item in get_id_labels("signals_list"):
@@ -239,7 +230,11 @@ def drop_on_plot(sender, app_data):
     dpg.add_button(label=f"Delete {app_data}", parent=dpg.last_item(), callback=lambda: dpg.delete_item(app_data))
 
 def on_resize():
-    dpg.configure_item("Main task", height=int(dpg.get_viewport_client_height() * 0.55))
+    # Calculate height to take up the top ~65% of the screen
+    # This leaves the bottom ~35% for the console area
+    height_val = int(dpg.get_viewport_client_height() * 0.65)
+    dpg.configure_item("Main task", height=height_val)
+    dpg.configure_item("plot_panel", height=height_val)
 
 #TODO Task 1:
 
@@ -387,26 +382,35 @@ def quantize_signal_gui():
     # 2. Display quantized signal on plot
     drop_on_plot(sender=None, app_data=quantized_name)
 
-    # 3. Add binary code annotations (Attached to main_plot)
-    for n, q_val in q_sig.items():
-        binary_code = enc_sig[n]
-        ann_id = dpg.add_plot_annotation(
-            label=binary_code,
-            default_value=(n, q_val),
-            offset=(0, -15),
-            color=[0, 255, 255, 255],
-            parent="main_plot",
-        )
-        ANNOTATIONS.append(ann_id)
+    # 3. Populate Results Table
+    if dpg.does_item_exist("quant_table"):
+        dpg.delete_item("quant_table", children_only=True)
+    
+    # Re-add columns
+    dpg.add_table_column(label="n", parent="quant_table")
+    dpg.add_table_column(label="Orig", parent="quant_table")
+    dpg.add_table_column(label="Quant", parent="quant_table")
+    # dpg.add_table_column(label="Lvl", parent="quant_table")
+    dpg.add_table_column(label="Code", parent="quant_table")
+    # dpg.add_table_column(label="Err", parent="quant_table")
 
-    # Output details to log
+    for n in sig_dict.keys():
+        with dpg.table_row(parent="quant_table"):
+            n_label = f"{int(n)}" if n == float(int(n)) else f"{n:.2f}"
+            dpg.add_text(n_label)
+            dpg.add_text(f"{sig_dict[n]:.3f}")
+            dpg.add_text(f"{q_sig[n]:.3f}")
+            # dpg.add_text(f"{lvl_idx[n]}")
+            dpg.add_text(f"{enc_sig[n]}")
+            # dpg.add_text(f"{err_sig[n]:.3f}")
+
+    # Output summary only to log
     log(f"--- Quantization Output: {name} ---", "info")
     log(f"Step size (Delta): {delta:.4f}", "info")
-    for n in sig_dict.keys():
-        log(
-            f"n={int(n)} | Orig={sig_dict[n]:.3f} | Quant={q_sig[n]:.3f} | Level={lvl_idx[n]} | Code={enc_sig[n]} | Error={err_sig[n]:.3f}",
-            "ok",
-        )
+
+def clear_quant_table():
+    if dpg.does_item_exist("quant_table"):
+        dpg.delete_item("quant_table", children_only=True)
 # end Task 3
 
 
@@ -521,17 +525,17 @@ with dpg.window(tag="Primary Window"):
 
                     with dpg.group(tag="Task 2", show=False):
                         dpg.add_text("Choose a function:")
-                        dpg.add_combo(label="Signal function", width=110, items=["sin", "cos"], default_value="--empty--", tag="sig_func")
+                        dpg.add_combo(label="Signal function", width=110, items=["sin", "cos"], default_value="sin", tag="sig_func")
                         dpg.add_separator()
                         dpg.add_text("Function parameters:")
                         with dpg.child_window(width=-1, height=185):
                             dpg.add_input_float(tag="A", label="Amplitude (A)", default_value=1.0, step=0.5, format="%.1f", width=110)
                             dpg.add_input_float(tag="theta", label="Phase shift (Theta)", default_value=0.0, step=0.1, format="%.1f", width=110)
                             dpg.add_input_float(tag="f", label="Frequency (F)", default_value=1.0, step=0.5, format="%.1f", width=110)
-                            dpg.add_input_float(tag="fs", label="Sampling frequency (Fs)", default_value=8.0, step=0.5, format="%.1f", width=110)
+                            dpg.add_input_float(tag="fs", label="Sampling frequency (Fs)", default_value=15.0, step=0.5, format="%.1f", width=110)
                             dpg.add_separator()
                             dpg.add_spacer(height=2)
-                            dpg.add_input_intx(tag="s_range", label="Sampling range", default_value=[0, 500], size=2, width=110)
+                            dpg.add_input_intx(tag="s_range", label="Sampling range", default_value=[0, 50], size=2, width=110)
                             dpg.add_radio_button(
                                 items=["Continuous", "Discrete"],
                                 default_value="Continuous",
@@ -543,29 +547,42 @@ with dpg.window(tag="Primary Window"):
 
                     with dpg.group(tag="Task 3", show=False):
                         dpg.add_text("Quantization Parameters:")
-                        with dpg.child_window(width=-1, height=220):
+                        with dpg.child_window(width=-1, height=180):
                             dpg.add_text("Drag signal to quantize:")
                             dpg.add_child_window(
-                                height=60, 
+                                height=50, 
                                 drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
                                 payload_type="signal", 
                                 tag="quantized-sig"
                             )
-                            dpg.add_spacer(height=5)
-                            dpg.add_text("Quantize input mode:")
                             dpg.add_radio_button(
                                 items=["Bits", "Levels"],
-                                default_value="Bits",
+                                default_value="Levels",
                                 horizontal=True,
                                 tag="quant_mode"
                             )
-                            dpg.add_spacer(height=5)
-                            dpg.add_input_int(tag="quant_val", label="Number of Bits / Levels", default_value=3, min_value=1, width=110)
+                            dpg.add_input_int(tag="quant_val", label="Number of Bits / Levels", default_value=4, min_value=1, width=110)
                         
-                        dpg.add_button(label="Quantize Signal", width=-1, height=45, callback=quantize_signal_gui)
+                        dpg.add_button(label="Quantize Signal", width=-1, height=35, callback=quantize_signal_gui)
+                        
+                        dpg.add_spacer(height=5)
+                        with dpg.group(horizontal=True):
+                            dpg.add_text("Encoded Signal:")
+                            dpg.add_spacer(width=300)
+                            dpg.add_button(label="Clear Table", callback=clear_quant_table, tag="clear_quant_btn", width=-1)
+                            dpg.bind_item_theme("clear_quant_btn", "clear_button_theme")
+                        
+                        with dpg.child_window(height=-1, border=True):
+                            with dpg.table(tag="quant_table", header_row=True, borders_innerH=True, borders_innerV=True, borders_outerH=True, borders_outerV=True, resizable=True, scrollY=True):
+                                dpg.add_table_column(label="n")
+                                dpg.add_table_column(label="Orig")
+                                dpg.add_table_column(label="Quant")
+                                dpg.add_table_column(label="Lvl")
+                                dpg.add_table_column(label="Code")
+                                dpg.add_table_column(label="Err")
                     # Task 3 end
 
-                with dpg.child_window(height=550):
+                with dpg.child_window(tag="plot_panel", height=550):
                     with dpg.plot(
                         label="Signal plot", 
                         width=-1, height=-1,
