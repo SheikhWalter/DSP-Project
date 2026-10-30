@@ -107,8 +107,8 @@ with dpg.theme() as global_plot:
         dpg.add_theme_style(dpg.mvPlotStyleVar_MarkerSize, 4, category=dpg.mvThemeCat_Plots)
 
     with dpg.theme_component(dpg.mvPlot):
-        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, (160, 190, 200), category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_AxisGrid, (0, 0, 0, 100), category=dpg.mvThemeCat_Plots)  
+        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, (10, 20, 20), category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_AxisGrid, (200, 200, 200, 100), category=dpg.mvThemeCat_Plots)  
 
 dpg.bind_theme(global_plot)
 
@@ -136,7 +136,7 @@ with dpg.theme(tag="console_theme"):
         dpg.add_theme_color(dpg.mvThemeCol_Border, (0, 255, 0, 255))
 
 
-dpg.create_viewport(title='DSP Project', width=1300, height=800)
+dpg.create_viewport(title='DSP Project', width=1300, height=900)
 
 # Helper functions
 
@@ -230,11 +230,8 @@ def drop_on_plot(sender, app_data):
     dpg.add_button(label=f"Delete {app_data}", parent=dpg.last_item(), callback=lambda: dpg.delete_item(app_data))
 
 def on_resize():
-    # Calculate height to take up the top ~65% of the screen
-    # This leaves the bottom ~35% for the console area
-    height_val = int(dpg.get_viewport_client_height() * 0.65)
-    dpg.configure_item("Main task", height=height_val)
-    dpg.configure_item("plot_panel", height=height_val)
+    dpg.configure_item("Main task", height=int(dpg.get_viewport_client_height() * 0.6))
+    dpg.configure_item("plot_panel", height=int(dpg.get_viewport_client_height() * 0.6))
 
 #TODO Task 1:
 
@@ -297,51 +294,6 @@ def generate_signal():
     register_signal(gen_sig, f"{sig_desc['A']}*{func_name}({2*sig_desc["f"]/sig_desc["fs"]:.2f}πn + {sig_desc["theta"]})[{sig_type[0]}]")
 
 #TODO Task 3
-def quantize_signal(signal_dict, levels=None, bits=None):
-    # Calculate Levels or Bits based on user input
-    if bits is not None and bits > 0:
-        levels = 2 ** bits
-    elif levels is not None and levels > 0:
-        bits = int(math.ceil(math.log2(levels)))
-    else:
-        raise ValueError("Either valid bits or levels must be provided.")
-
-    x_vals = list(signal_dict.values())
-    x_min = min(x_vals)
-    x_max = max(x_vals)
-
-    # Step size Delta
-    delta = (x_max - x_min) / levels
-
-    quantized_sig = {}
-    error_sig = {}
-    encoded_sig = {}
-    level_indices = {}
-
-    for n, x in signal_dict.items():
-        # Determine 1-based level index (k)
-        if x == x_max:
-            k = levels
-        else:
-            k = int((x - x_min) // delta) + 1
-            if k > levels:
-                k = levels
-
-        # Midpoint reconstruction level
-        q_k = x_min + (k - 0.5) * delta
-        
-        # Calculate quantization error and binary encoding
-        err = q_k - x
-        encoded_str = format(k - 1, f'0{bits}b')
-
-        quantized_sig[n] = q_k
-        error_sig[n] = err
-        encoded_sig[n] = encoded_str
-        level_indices[n] = k
-
-    return quantized_sig, error_sig, encoded_sig, level_indices, delta
-
-# Task 3 GUI
 
 def quantize_signal_gui():
     names = get_values("quantized-sig")
@@ -361,11 +313,11 @@ def quantize_signal_gui():
 
     # Run quantization
     if mode == "Bits":
-        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(
+        q_sig, err_sig, enc_sig, lvl_idx, delta = t3.quantize_signal(
             sig_dict, bits=int(val)
         )
     else:
-        q_sig, err_sig, enc_sig, lvl_idx, delta = quantize_signal(
+        q_sig, err_sig, enc_sig, lvl_idx, delta = t3.quantize_signal(
             sig_dict, levels=int(val)
         )
 
@@ -411,9 +363,6 @@ def quantize_signal_gui():
 def clear_quant_table():
     if dpg.does_item_exist("quant_table"):
         dpg.delete_item("quant_table", children_only=True)
-# end Task 3
-
-
 
 # Main GUI
 with dpg.window(tag="Primary Window"):
@@ -433,7 +382,7 @@ with dpg.window(tag="Primary Window"):
 
         with dpg.group():
             with dpg.group(horizontal=True):
-                with dpg.child_window(tag="Main task", width=550, height=500):
+                with dpg.child_window(tag="Main task", width=550, height=550):
 
                     # Task 1
                     
@@ -532,7 +481,7 @@ with dpg.window(tag="Primary Window"):
                             dpg.add_input_float(tag="A", label="Amplitude (A)", default_value=1.0, step=0.5, format="%.1f", width=110)
                             dpg.add_input_float(tag="theta", label="Phase shift (Theta)", default_value=0.0, step=0.1, format="%.1f", width=110)
                             dpg.add_input_float(tag="f", label="Frequency (F)", default_value=1.0, step=0.5, format="%.1f", width=110)
-                            dpg.add_input_float(tag="fs", label="Sampling frequency (Fs)", default_value=15.0, step=0.5, format="%.1f", width=110)
+                            dpg.add_input_float(tag="fs", label="Sampling frequency (Fs)", default_value=8.0, step=0.5, format="%.1f", width=110)
                             dpg.add_separator()
                             dpg.add_spacer(height=2)
                             dpg.add_input_intx(tag="s_range", label="Sampling range", default_value=[0, 50], size=2, width=110)
@@ -555,13 +504,18 @@ with dpg.window(tag="Primary Window"):
                                 payload_type="signal", 
                                 tag="quantized-sig"
                             )
+                            dpg.add_spacer(height=5)
+                            dpg.add_text("Quantize input mode:")
+
+                            on_quant = lambda: dpg.set_item_label("quant_val", f"Number of {dpg.get_value("quant_mode")}")
                             dpg.add_radio_button(
                                 items=["Bits", "Levels"],
                                 default_value="Levels",
                                 horizontal=True,
-                                tag="quant_mode"
+                                tag="quant_mode",
+                                callback=on_quant
                             )
-                            dpg.add_input_int(tag="quant_val", label="Number of Bits / Levels", default_value=4, min_value=1, width=110)
+                            dpg.add_input_int(tag="quant_val", label="Number of Levels", default_value=4, min_value=1, width=110)
                         
                         dpg.add_button(label="Quantize Signal", width=-1, height=35, callback=quantize_signal_gui)
                         

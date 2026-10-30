@@ -1,6 +1,6 @@
 import importlib.util
 from pathlib import Path
-from DSP import quantize_signal
+from Tasks_codes.Task3 import quantize_signal
 
 
 # Helper function to dynamically load a Python file as a module

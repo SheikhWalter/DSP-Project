@@ -1,6 +1,7 @@
 import math
 
 from . import Task1 as t1
+from . import Task3 as t3
 
 # Classes
 
