@@ -160,23 +160,24 @@ def delete_signal(sender, _, name):
     SIGNALS.pop(name)
     dpg.configure_item(dpg.get_item_parent(sender), show=False)
 
-def read_signal():
+def read_signal(sender, app_data):
     global N_SAMPLES, SIGNAL
-    root = Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    path = filedialog.askopenfilename(
-        title="Select Target Image"
-    )
-    root.destroy()
-    with open(path, "r") as file:
-        content = file.read()
-        content = content.split("\n")
+    path = app_data["file_path_name"]
+    try:
+        with open(path, "r") as file:
+            lines = [l.strip() for l in file.read().splitlines()]
         #N_SAMPLES = content[2]
-        new_sig = Signal(0, {float(n): float(x) for n,x in [s.split(" ") for s in content[3:]]})
-    
-    name = sig_name()
-    register_signal(new_sig, name)
+        new_sig = {}
+        for line in lines[3:]:
+            if not line:
+                continue
+            n, x = line.split()[:2]
+            new_sig[int(n)] = float(x)
+    except (ValueError, OSError) as e:
+        log(f"Could not read signal file: {e}", "error")
+        return
+        
+    register_signal(Signal(0, new_sig), sig_name())
 
 def register_signal(signal: Signal, name: str):
     if name in SIGNALS.keys():
@@ -192,7 +193,7 @@ def register_signal(signal: Signal, name: str):
     log(f"Added {name} successfully", "ok")
 
 def export_signal(sender, _, name):
-    signal = ["0", "0", f"{len(SIGNALS[name].sig)}"] + [f"{int(n)} {int(x)}" for n,x in SIGNALS[name].sig.items()]
+    signal = ["0", "0", f"{len(SIGNALS[name].sig)}"] + [f"{int(n)} {x}" for n,x in SIGNALS[name].sig.items()]
     output = "\n".join(signal)
     with open(f"{name}.txt", "w", encoding="utf-8") as file:
         file.write(output)
@@ -270,7 +271,7 @@ def reverse_signal():
 
 #TODO Task 2:
 
-def generate_signal():
+def generate_sino_signal():
     func_name = dpg.get_value("sig_func")
     if func_name == "sin":
         func = math.sin
@@ -364,7 +365,47 @@ def clear_quant_table():
     if dpg.does_item_exist("quant_table"):
         dpg.delete_item("quant_table", children_only=True)
 
+# TODO Task 5
+
+def average_signal():
+    name = get_values("averaged-sig")
+    if not name: return
+    name = name[0]
+    size = dpg.get_value("avg_size")
+    if size > len(SIGNALS[name].sig):
+        log("Filter size can't be larger than the signal itself", "error")
+        return
+
+    averaged_sig = Signal(0, t5.average_signal(SIGNALS[name].sig, size))
+    register_signal(averaged_sig, f"{name}_avg_{size}")
+
+def sharpen_signal():
+    name = get_values("sharpened-sig")
+    if not name: return
+    name = name[0]
+    der = dpg.get_value("der_type")
+
+    sharpened_sig = Signal(0, t5.sharpen_signal(SIGNALS[name].sig, der))
+    register_signal(sharpened_sig, f"{name}_{"1st" if der == "First" else "2nd"}_sharp")
+
+def convolve_signals():
+    name1 = get_values("conv-sig-1")
+    if not name1: return
+    name1 = name1[0]
+    name2 = get_values("conv-sig-2")
+    if not name2: return
+    name2 = name2[0]
+
+    convolved_sig = Signal(0, t5.convolve_signals(SIGNALS[name1].sig, SIGNALS[name2].sig))
+    register_signal(convolved_sig, f"{name1}∗{name2}")
+
 # Main GUI
+with dpg.file_dialog(directory_selector=False, show=False, modal=True,
+                     callback=read_signal, tag="signal_file_dialog",
+                     width=700, height=400):
+    dpg.add_file_extension(".txt", color=(0, 255, 0, 255))
+    dpg.add_file_extension(".*")
+
 with dpg.window(tag="Primary Window"):
     with dpg.group(horizontal=True):
         with dpg.child_window(tag="Task selector", width=165):
@@ -490,7 +531,7 @@ with dpg.window(tag="Primary Window"):
                                 default_value="Continuous",
                                 tag="sig_type"
                             )
-                        dpg.add_button(label="Generate signal", width=-1, height=45, callback=generate_signal)
+                        dpg.add_button(label="Generate signal", width=-1, height=45, callback=generate_sino_signal)
 
                     # Task 3
 
@@ -534,7 +575,78 @@ with dpg.window(tag="Primary Window"):
                                 dpg.add_table_column(label="Lvl")
                                 dpg.add_table_column(label="Code")
                                 dpg.add_table_column(label="Err")
-                    # Task 3 end
+                    
+                    # Task 5
+
+                    with dpg.group(tag="Task 5", show=False):
+                        # Averaging
+
+                        dpg.add_separator(label="Moving average:")
+                        dpg.add_text("Input signal:")
+                        dpg.add_child_window(
+                            height=40, 
+                            drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
+                            payload_type="signal", 
+                            tag="averaged-sig"
+                        )
+                        dpg.add_text("Filter size:")
+                        with dpg.group(horizontal=True):
+                            dpg.add_input_int(tag="avg_size", default_value=3, step=2, min_value=3, width=120)
+                            dpg.add_spacer(width=50)
+                            dpg.add_button(
+                                label="Compute", 
+                                callback=average_signal
+                            )
+                        dpg.add_separator()
+                        dpg.add_spacer(height=2)
+
+                        # Sharpening
+
+                        dpg.add_separator(label="Sharpen signals:")
+                        dpg.add_text("Input signal:")
+                        dpg.add_child_window(
+                            height=40, 
+                            drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
+                            payload_type="signal", 
+                            tag="sharpened-sig"
+                        )
+                        dpg.add_text("Derivative type:")
+                        with dpg.group(horizontal=True):
+                            dpg.add_radio_button(
+                                items=["First", "Second"],
+                                default_value="First",
+                                tag="der_type",
+                                horizontal=True
+                            )
+                            dpg.add_spacer(width=44)
+                            dpg.add_button(
+                                label="Compute", 
+                                callback=sharpen_signal
+                            )
+                        dpg.add_separator()
+                        dpg.add_spacer(height=2)
+
+                        # Convolution
+
+                        dpg.add_separator(label="Convolve signals:")
+                        dpg.add_text("Input signal 1:")
+                        dpg.add_child_window(
+                            height=40, 
+                            drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
+                            payload_type="signal", 
+                            tag="conv-sig-1"
+                        )
+                        dpg.add_text("Input signal 2:")
+                        dpg.add_child_window(
+                            height=40, 
+                            drop_callback=lambda s, a: (dpg.delete_item(s, children_only=True), drop_on_window(s, a)), 
+                            payload_type="signal", 
+                            tag="conv-sig-2"
+                        )
+                        dpg.add_button(
+                            label="Convolve", 
+                            callback=convolve_signals
+                        )
 
                 with dpg.child_window(tag="plot_panel", height=550):
                     with dpg.plot(
@@ -559,7 +671,7 @@ with dpg.window(tag="Primary Window"):
 
                     dpg.add_separator()
                     dpg.add_spacer(height=2)
-                    dpg.add_button(label="Read Signal", callback=read_signal)  
+                    dpg.add_button(label="Read Signal", callback=lambda: dpg.show_item("signal_file_dialog"))  
 
                     with dpg.child_window(height=-1):
                         dpg.add_group(tag="signals_list")

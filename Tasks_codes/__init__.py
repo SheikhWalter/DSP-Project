@@ -2,6 +2,7 @@ import math
 
 from . import Task1 as t1
 from . import Task3 as t3
+from . import Task5 as t5
 
 # Classes
 
@@ -19,7 +20,7 @@ class Signal():
 
 # Globals
 
-TASKS = ["Task 1", "Task 2", "Task 3"]
+TASKS = ["Task 1", "Task 2", "Task 3", "Task 5"]
 N_SAMPLES = None
 SIGNALS: dict[str, Signal] = {}
 SIG_NUM = 0
